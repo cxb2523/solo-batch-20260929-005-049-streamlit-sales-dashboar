@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="home card">
+  <h1>欢迎，{{ user.name }}</h1>
+  <p class="sub">当前状态：<b>{{ board.state_label }}</b> · 凭据来源：{{ credentials.source_label }}
+     {% if credentials.source == 'toml' %}（version {{ credentials.version }}）{% endif %}</p>
+  {% if board.migration %}<p class="badge" style="display:inline-block; padding:6px 12px">{{ board.migration }}</p>{% endif %}
+  <p style="margin-top:24px">
+    <form method="post" action="/logout"><button class="logout" type="submit">登出</button></form>
+  </p>
+</div>
+{% endblock %}

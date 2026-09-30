@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>鉴权状态机</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; background:#0b1220; color:#e6edf3; }
+.statusbar { position:sticky; top:0; z-index:10; background:#111c33; border-bottom:1px solid #24304d; padding:12px 20px; }
+.sb-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; max-width:1000px; margin:0 auto; }
+.sb-source { font-size:13px; color:#9fb3d1; }
+.sb-source b { color:#7ee0c1; }
+.steps { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.step { font-size:12px; padding:4px 10px; border-radius:20px; background:#1b2740; color:#8aa0c4; border:1px solid transparent; }
+.step.done { background:#123b2e; color:#7ee0c1; border-color:#1f6b50; }
+.step.active { background:#243b63; color:#ffd166; border-color:#3f6bb5; animation:pulse 1.2s infinite; }
+.step.failed { background:#4a1d24; color:#ff9aa2; border-color:#8b2f3a; }
+.arrow { color:#44536e; font-size:11px; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+.sb-meta { font-size:12px; color:#9fb3d1; }
+.sb-fail { color:#ff9aa2; }
+.sb-events { max-width:1000px; margin:8px auto 0; font-size:11px; color:#6f86a8; font-family:monospace; white-space:pre-wrap; }
+.retry-btn { background:#243b63; color:#ffd166; border:1px solid #3f6bb5; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+.wrap { max-width:420px; margin:64px auto; }
+.card { background:#111c33; border:1px solid #24304d; border-radius:12px; padding:28px; }
+h1 { font-size:20px; margin:0 0 4px; }
+.sub { color:#9fb3d1; font-size:13px; margin-bottom:20px; }
+label { display:block; font-size:13px; margin:12px 0 6px; color:#c3d0e6; }
+input { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #2c3a5a; background:#0b1220; color:#e6edf3; font-size:14px; }
+input:focus { outline:none; border-color:#3f6bb5; }
+.captcha-row { display:flex; gap:10px; align-items:center; }
+.captcha-row svg { border-radius:8px; border:1px solid #2c3a5a; }
+button.primary { margin-top:22px; width:100%; padding:11px; border:0; border-radius:8px; background:#2f6df6; color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+button.primary:hover { background:#3f7bff; }
+.error { background:#4a1d24; border:1px solid #8b2f3a; color:#ff9aa2; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:14px; }
+.home { max-width:720px; margin:48px auto; }
+.logout { background:transparent; color:#ff9aa2; border:1px solid #8b2f3a; border-radius:8px; padding:6px 14px; cursor:pointer; }
+.badge { font-size:11px; padding:2px 8px; border-radius:12px; background:#123b2e; color:#7ee0c1; }
+</style>
+</head>
+<body>
+{% block bar %}
+<div class="statusbar">
+  <div class="sb-row">
+    <div class="steps">
+      {% for step in board.steps %}
+      <span class="step {{ step.status }}">{{ step.label }}</span>
+      {% if not loop.last %}<span class="arrow">→</span>{% endif %}
+      {% endfor %}
+    </div>
+    <div class="sb-source">来源：<b>{{ board.source_label }}</b>
+      {% if board.source == 'toml' %}<span class="badge">v{{ board.version }}</span>{% endif %}
+    </div>
+    {% if board.progress %}<span class="sb-meta">{{ board.progress }}</span>{% endif %}
+    {% if board.failure %}<span class="sb-meta sb-fail">失败原因：{{ board.failure }}</span>{% endif %}
+    {% if board.state == 'fallback' %}
+    <form method="post" action="/retry-migration" style="display:inline">
+      <button class="retry-btn" type="submit">原地重试</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if board.events %}<div class="sb-events" id="sb-events">{{ board.events | join(' → ') }}</div>{% endif %}
+</div>
+{% endblock %}
+{% block content %}{% endblock %}
+<script>
+async function pollStatus() {
+  try {
+    const r = await fetch('/auth/status');
+    if (!r.ok) return;
+    const b = await r.json();
+    document.querySelectorAll('.step').forEach((el, i) => {
+      const s = b.steps[i] && b.steps[i].status;
+      if (s) el.className = 'step ' + s;
+    });
+  } catch (e) {}
+}
+setInterval(pollStatus, 1500);
+</script>
+</body>
+</html>

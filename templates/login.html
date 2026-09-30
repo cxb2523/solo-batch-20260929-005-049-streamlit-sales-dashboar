@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="wrap">
+  <div class="card">
+    <h1>登录</h1>
+    <div class="sub">状态机：未认证 → 校验中 → 已认证 → 迁移中 → 回退</div>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="captcha_token" value="{{ challenge.token }}">
+      <label for="username">用户名</label>
+      <input id="username" name="username" autocomplete="username" autofocus required>
+      <label for="password">口令</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <label>验证码（不区分大小写）</label>
+      <div class="captcha-row">
+        <div>{{ challenge.svg | safe }}</div>
+        <input name="captcha" autocomplete="off" required style="flex:1" maxlength="4">
+      </div>
+      <button class="primary" type="submit">登录</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

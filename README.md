@@ -1,31 +1,55 @@
+# Streamlit Sales Dashboard — with reusable `auth` package
 
-# Add a User Authentication Service (Login Form) in Streamlit
+A self-contained, UI-agnostic authentication package plus a Streamlit login
+page and sales dashboard.
 
-In this video, I will show you how to add a user authentication service (login form) in Streamlit so that your users can log in and see the content of your streamlit app. To implement the user authentication, we will use the ‘streamlit-authenticator’ library, a secure authentication module to validate user credentials in a Streamlit application.
+## Layout
 
-## Video Tutorial
-[![YouTube Video](https://img.youtube.com/vi/JoFGrSRj4X4/0.jpg)](https://youtu.be/JoFGrSRj4X4)
+```
+auth/                  # reusable auth package (stdlib + argon2 only)
+  __init__.py          #   public surface: check_login, logout, current_user, credentials
+  _states.py           #   state machine vocabulary & result dataclasses
+  _locks.py            #   fcntl lock (POSIX) / msvcrt equivalent (Windows)
+  _store.py            #   toml truth, pkl compatibility source, atomic migration
+login_page.py          # Streamlit login page (status strip)
+app.py                 # thin gate + sales dashboard
+config/credentials.toml# created on first login (single truth)
+hashed_pw.pkl          # read-only compatibility source (argon2 hashes)
+tests/test_auth.py     # pytest: 5 required paths + concurrency
+generate_keys.py       # regenerate hashed_pw.pkl
+```
 
-## Demo Website
-⭐ https://userauth-dashboard.herokuapp.com/
+## Credential migration
 
-## Screenshot
-![Login Screenshot](/demo.jpg?raw=true "Login Form")
+- Truth lives in `config/credentials.toml` (`version` + per-user `name`/
+  argon2 `password`).
+- `hashed_pw.pkl` is read-only and used only until the first successful login.
+- Migration writes `credentials.toml.<pid>.tmp` and promotes it with
+  `os.replace`; an interrupted/missing-key/corrupt write keeps the original
+  file byte-for-byte and falls back to the pkl source, with in-place retry.
+- Concurrent first logins: an advisory `fcntl.flock` lock (Windows: `msvcrt`)
+  elects exactly one migrator; losers re-read the toml (version judgment) and
+  reuse its result. There is never a second truth.
 
-## Streamlit-authenticator
-⭐ Check out the library here: https://github.com/mkhorasani/Streamlit-Authenticator
+## State machine
 
-## Learn Excel Automation with Python
-If this repo helped you, my [Excel Automation Course](https://pythonandvba.com/excel-automation-course/) teaches the full workflow from zero: Python for Excel users, xlwings, pandas and real projects.
+`unauthenticated -> checking -> authenticated -> migrating -> fallback`
 
-Also check out my other [tools and templates](https://pythonandvba.com/solutions).
+The status strip shows source, per-step progress (credentials/captcha/
+verify/migrate/session) and failure reason; a wrong captcha and a wrong
+password produce the same user-facing message.
 
-## Connect with Me
-- **YouTube:** [CodingIsFun](https://youtube.com/c/CodingIsFun)
-- **Website:** [PythonAndVBA](https://pythonandvba.com)
-- **LinkedIn:** [Sven Bosau](https://www.linkedin.com/in/sven-bosau/)
-- **Contact:** [Get in Touch](https://pythonandvba.com/contact)
-## Support
-If you find this project helpful, consider buying me a coffee. 
+## Accounts (demo)
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://pythonandvba.com/coffee-donation)
+| username | password |
+|----------|----------|
+| `pparker` | `abc123` |
+| `rmiller` | `def456` |
+
+## Run
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests/test_auth.py -q
+streamlit run app.py
+```

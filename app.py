@@ -1,62 +1,51 @@
-import pickle
+"""Sales dashboard entry point.
+
+Auth lives entirely in the reusable ``auth`` package; this module is only a
+thin gate that shows the login page for unauthenticated visitors and the
+dashboard afterwards.
+"""
+
 from pathlib import Path
 
 import pandas as pd  # pip install pandas openpyxl
 import plotly.express as px  # pip install plotly-express
 import streamlit as st  # pip install streamlit
-import streamlit_authenticator as stauth  # pip install streamlit-authenticator
 
+import auth
+from login_page import render_login
 
-# emojis: https://www.webfx.com/tools/emoji-cheat-sheet/
 st.set_page_config(page_title="Sales Dashboard", page_icon=":bar_chart:", layout="wide")
 
 
-# --- USER AUTHENTICATION ---
-names = ["Peter Parker", "Rebecca Miller"]
-usernames = ["pparker", "rmiller"]
+def _dashboard() -> None:
+    user = auth.current_user(st.session_state)
 
-# load hashed passwords
-file_path = Path(__file__).parent / "hashed_pw.pkl"
-with file_path.open("rb") as file:
-    hashed_passwords = pickle.load(file)
-
-authenticator = stauth.Authenticate(names, usernames, hashed_passwords,
-    "sales_dashboard", "abcdef", cookie_expiry_days=30)
-
-name, authentication_status, username = authenticator.login("Login", "main")
-
-if authentication_status == False:
-    st.error("Username/password is incorrect")
-
-if authentication_status == None:
-    st.warning("Please enter your username and password")
-
-if authentication_status:
-    # ---- READ EXCEL ----
-    @st.cache
+    @st.cache_data
     def get_data_from_excel():
         df = pd.read_excel(
-            io="supermarkt_sales.xlsx",
+            io=Path(__file__).parent / "supermarkt_sales.xlsx",
             engine="openpyxl",
             sheet_name="Sales",
             skiprows=3,
             usecols="B:R",
             nrows=1000,
         )
-        # Add 'hour' column to dataframe
         df["hour"] = pd.to_datetime(df["Time"], format="%H:%M:%S").dt.hour
         return df
 
     df = get_data_from_excel()
 
-    # ---- SIDEBAR ----
-    authenticator.logout("Logout", "sidebar")
-    st.sidebar.title(f"Welcome {name}")
+    if st.sidebar.button("Logout"):
+        auth.logout(st.session_state)
+        st.session_state.pop("login_last_result", None)
+        st.rerun()
+
+    st.sidebar.title(f"Welcome {user.name}")
     st.sidebar.header("Please Filter Here:")
     city = st.sidebar.multiselect(
         "Select the City:",
         options=df["City"].unique(),
-        default=df["City"].unique()
+        default=df["City"].unique(),
     )
 
     customer_type = st.sidebar.multiselect(
@@ -68,23 +57,20 @@ if authentication_status:
     gender = st.sidebar.multiselect(
         "Select the Gender:",
         options=df["Gender"].unique(),
-        default=df["Gender"].unique()
+        default=df["Gender"].unique(),
     )
 
     df_selection = df.query(
-        "City == @city & Customer_type ==@customer_type & Gender == @gender"
+        "City == @city & Customer_type == @customer_type & Gender == @gender"
     )
 
-    # ---- MAINPAGE ----
     st.title(":bar_chart: Sales Dashboard")
     st.markdown("##")
 
-    # TOP KPI's
     total_sales = int(df_selection["Total"].sum())
     average_rating = round(df_selection["Rating"].mean(), 1)
     star_rating = ":star:" * int(round(average_rating, 0))
     average_sale_by_transaction = round(df_selection["Total"].mean(), 2)
-
     left_column, middle_column, right_column = st.columns(3)
     with left_column:
         st.subheader("Total Sales:")
@@ -98,9 +84,9 @@ if authentication_status:
 
     st.markdown("""---""")
 
-    # SALES BY PRODUCT LINE [BAR CHART]
     sales_by_product_line = (
-        df_selection.groupby(by=["Product line"]).sum()[["Total"]].sort_values(by="Total")
+        df_selection.groupby(by=["Product line"]).sum(numeric_only=True)[["Total"]]
+        .sort_values(by="Total")
     )
     fig_product_sales = px.bar(
         sales_by_product_line,
@@ -113,11 +99,10 @@ if authentication_status:
     )
     fig_product_sales.update_layout(
         plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=(dict(showgrid=False))
+        xaxis=dict(showgrid=False),
     )
 
-    # SALES BY HOUR [BAR CHART]
-    sales_by_hour = df_selection.groupby(by=["hour"]).sum()[["Total"]]
+    sales_by_hour = df_selection.groupby(by=["hour"]).sum(numeric_only=True)[["Total"]]
     fig_hourly_sales = px.bar(
         sales_by_hour,
         x=sales_by_hour.index,
@@ -129,16 +114,13 @@ if authentication_status:
     fig_hourly_sales.update_layout(
         xaxis=dict(tickmode="linear"),
         plot_bgcolor="rgba(0,0,0,0)",
-        yaxis=(dict(showgrid=False)),
+        yaxis=dict(showgrid=False),
     )
-
 
     left_column, right_column = st.columns(2)
     left_column.plotly_chart(fig_hourly_sales, use_container_width=True)
     right_column.plotly_chart(fig_product_sales, use_container_width=True)
 
-
-    # ---- HIDE STREAMLIT STYLE ----
     hide_st_style = """
                 <style>
                 #MainMenu {visibility: hidden;}
@@ -147,3 +129,9 @@ if authentication_status:
                 </style>
                 """
     st.markdown(hide_st_style, unsafe_allow_html=True)
+
+
+# render_login() returns False for a FALLBACK session so the user stays on
+# the login page until the migration retry succeeds.
+if render_login():
+    _dashboard()
